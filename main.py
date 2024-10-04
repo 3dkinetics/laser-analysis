@@ -178,6 +178,7 @@ def generate_interval_metrics(df, selected_speeds):
 
 def plot_data(df, selected_speeds, x_axis_option):
     parameters = {
+        "speed": {"name": "Speed", "unit": "m/s"},  # Using speed directly
         "acc_": {"name": "Acceleration", "unit": "m/s²"},
         "force_": {"name": "Force", "unit": "N"},
         "force_per_mass_": {"name": "Force per Mass", "unit": "N/kg"},
@@ -195,31 +196,57 @@ def plot_data(df, selected_speeds, x_axis_option):
         x_axis_label = "Distance (m)"
         x_axis_column = "dist-ref"
 
+    # Ensure the selected speeds are available in the DataFrame
+    if not all(col in df.columns for col in selected_speeds):
+        st.error("Some of the selected speed columns are missing in the input data.")
+        return
+
+    # Loop through the parameters for plotting
     for param_prefix, param_info in parameters.items():
         param_name = param_info["name"]
         param_unit = param_info["unit"]
         st.subheader(f"{param_name} ({param_unit}) vs {x_axis_label}")
 
-        # Prepare data
-        data = pd.DataFrame({x_axis_column: df[x_axis_column]})
-        for speed_col in selected_speeds:
-            col_name = param_prefix + speed_col
-            data[speed_col] = df[col_name]
+        # Prepare data for plotting
+        data = pd.DataFrame(
+            {x_axis_column: df[x_axis_column].values}
+        )  # Ensure 1D array for x-axis
 
-        # Melt data
+        # Populate the data with selected speed columns or parameter columns
+        for speed_col in selected_speeds:
+            if param_prefix == "speed":  # For speed, directly use the column
+                data[speed_col] = df[speed_col].values
+            else:
+                col_name = param_prefix + speed_col
+                if col_name in df.columns:
+                    data[speed_col] = df[
+                        col_name
+                    ].values  # Ensure 1D array for derived parameters
+
+        # Check if the data has valid values before melting
+        if data.empty:
+            st.warning(f"No data available to plot for {param_name}.")
+            continue
+
+        # Melt the data for Plotly (reshape for easier plotting)
         data_melted = data.melt(
             id_vars=[x_axis_column],
             value_vars=selected_speeds,
-            var_name="Speed",
+            var_name="Speed Type",
             value_name=param_name,
         )
 
-        # Plot
+        # Ensure the melted data has valid values
+        if data_melted.empty:
+            st.warning(f"No data to plot for {param_name}.")
+            continue
+
+        # Plot the graph of Speed or other parameters over the selected x-axis
         fig = px.line(
             data_melted,
             x=x_axis_column,
             y=param_name,
-            color="Speed",
+            color="Speed Type",
             labels={
                 x_axis_column: x_axis_label,
                 param_name: f"{param_name} ({param_unit})",
@@ -227,6 +254,8 @@ def plot_data(df, selected_speeds, x_axis_option):
             title=f"{param_name} vs {x_axis_label}",
             markers=True,
         )
+
+        # Show the plot
         st.plotly_chart(fig, use_container_width=True)
 
 
